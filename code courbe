@@ -1,0 +1,54 @@
+ import numpy as np
+import matplotlib.pyplot as plt
+from scipy.integrate import solve_ivp
+
+# === Constantes physiques (unités naturelles) ===
+ħ = 1.0     # Constante de Planck réduite
+m = 1.0     # Masse
+
+# === Paramètres du potentiel ===
+V0 = 5.0            # Profondeur du puits
+a = 1.0             # Largeur
+xmin, xmax = -10, 10  # Domaine d'intégration
+
+# === Définition du potentiel ===
+def potentiel(x):
+    return -V0 if -a/2 <= x <= a/2 else 0
+
+# === Équation de Schrödinger sous forme de système d'EDO ===
+def equation_schrodinger(Energie):
+    def f(x, y):
+        ψ, dψdx = y
+        d2ψdx2 = 2 * m / ħ**2 * (potentiel(x) - Energie) * ψ
+        return [dψdx, d2ψdx2]
+    return f
+
+# === Calcul de la transmission pour une énergie donnée ===
+def calcul_transmission(E):
+    solution = solve_ivp(
+        equation_schrodinger(E),
+        [xmin, xmax],
+        [0.0, 1e-5],     # Conditions initiales : onde faible à gauche
+        t_eval=np.linspace(xmin, xmax, 1000)
+    )
+    ψ = solution.y[0]
+    x_vals = solution.t
+
+    ψ_apres = ψ[x_vals > a]  # Zone après le puits
+    T = np.max(np.abs(ψ_apres))**2
+    return T
+
+# === Analyse sur une plage d'énergies ===
+E_range = np.linspace(0.01, 10, 200)
+T_resultats = np.array([calcul_transmission(E) for E in E_range])
+
+# === Affichage graphique ===
+plt.figure(figsize=(10, 6))
+plt.plot(E_range, T_resultats, color='crimson', linewidth=2, label="Transmission $T(E)$")
+plt.xlabel("Énergie $E$")
+plt.ylabel("Transmission $T$")
+plt.title("Transmission quantique à travers un puits fini")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
