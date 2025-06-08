@@ -1,0 +1,174 @@
+import numpy as np
+import math
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+def init():
+    line.set_data([], [])
+    return line,
+
+def animate(j):
+    line.set_data(o, final_density[j,:]) #Crée un graphique pour chaque densite sauvegarde
+    return line,
+
+dt=1E-7
+dx=0.001
+nx=int(1/dx)*2
+nt=90000 # En fonction du potentiel il faut modifier ce parametre car sur certaines animations la particule atteins les bords
+n_frames=int(nt/1000)+1#nombre d image dans notre animation
+s=dt/(dx**2)
+v0=-4000
+e=5#Valeur du rapport E/V0
+E=e*v0
+k=math.sqrt(2*abs(E))
+
+x_array = np.linspace(0, (nx - 1) * dx, nx)
+o = x_array
+V_potential = np.zeros(nx)
+
+# Puits de potentiel fini
+a = 0.5  # largeur du puits
+V_potential[np.abs(x_array) < a/2] = v0  # Potentiel négatif entre -a/2 et a/2
+#gaussian wave packet (Paquet ondes gaussien)
+
+xc=0.6
+sigma=0.05
+normalisation=1/(math.sqrt(sigma*math.sqrt(math.pi)))
+wp_gauss = normalisation * np.exp(1j * k * x_array - ((x_array - xc) ** 2) / (2 * (sigma ** 2)))
+#wave packet Real part 
+wp_re=np.zeros(nx)
+wp_re[:]=np.real(wp_gauss[:])
+#wave packet Imaginary part 
+wp_im=np.zeros(nx)
+wp_im[:]=np.imag(wp_gauss[:])
+
+density = np.zeros((nt,nx))
+density[0,:] = np.absolute(wp_gauss[:]) ** 2
+
+final_density =np.zeros((n_frames,nx)) 
+
+# Propagation libre sans barrière
+for i in range(1, nt):
+    if i % 2 != 0:
+        buffer_im = wp_im.copy()
+        wp_im[1:-1] += s * (wp_re[2:] + wp_re[:-2] - 2 * wp_re[1:-1])
+        density[i,1:-1] = wp_re[1:-1]**2 + buffer_im[1:-1]**2
+    else:
+        wp_re[1:-1] -= s * (wp_im[2:] + wp_im[:-2] - 2 * wp_im[1:-1])
+
+# Stocker des frames pour l'animation
+for i in range(1, nt):
+    if((i-1)%1000==0):
+        frame_index = int((i - 1)/1000)
+        final_density[frame_index,:] = density[i,:]
+
+#Algo devant retourner la densité de probabilité de présence de la particule à différents instants
+
+plot_title = "E/Vo="+str(e)
+
+fig = plt.figure() # initialise la figure principale
+line, = plt.plot([], [])
+plt.ylim(-1,1)
+plt.xlim(0,2)
+plt.plot(x_array,V_potential,label="Potentiel")
+plt.title(plot_title)
+plt.xlabel("x")
+plt.ylabel("Densité de probabilité de présence")
+plt.legend() #Permet de faire apparaitre la legende
+
+ani = animation.FuncAnimation(fig,animate,init_func=init, frames=n_frames, blit=False, interval=100, repeat=False)
+#file_name = 'paquet_onde_e='+str(e)+'.mp4'
+#ani.save(file_name, writer = animation.FFMpegWriter(fps=120, bitrate=5000))
+plt.show()
+
+
+print("\nCalcul des états stationnaires...")
+
+hbar = 1
+m = 1
+
+# Hamiltonien tridiagonal pour équation de Schrödinger stationnaire
+main_diag = (hbar**2 / (m * dx**2)) + V_potential
+off_diag = - (hbar**2 / (2 * m * dx**2)) * np.ones(nx - 1)
+
+eigvals, eigvecs = eigh_tridiagonal(main_diag, off_diag, select='a')
+
+# Affichage des états propres
+plt.figure(figsize=(10, 6))
+for i in range(6):
+    psi = eigvecs[:, i]
+    psi /= np.sqrt(np.trapz(psi ** 2, x))  # Normalisation
+    plt.plot(x, psi + eigvals[i], label=f"État {i}, E ≈ {eigvals[i]:.2f}")
+
+plt.plot(x, V_potential, 'k--', label="Potentiel V(x)")
+plt.title("États stationnaires dans un puits de potentiel")
+plt.xlabel("x")
+plt.ylabel("Énergie / Fonction d’onde")
+plt.legend()
+plt.grid()
+plt.show()
+
+# ========== COEFFICIENT DE TRANSMISSION ANALYTIQUE ==========
+print("\nCalcul de T(e) analytique...")
+
+a = 0.1  # largeur du puits
+e_vals = np.linspace(0.01, 1.5, 300)
+T_vals = []
+
+for e_val in e_vals:
+    E_val = e_val * abs(v0)
+    k1 = np.sqrt(2 * m * E_val) / hbar
+    if E_val + v0 > 0:
+        k2 = np.sqrt(2 * m * (E_val + v0)) / hbar
+        denom = 4 * np.cos(k2 * a)**2 + ((k2**2 + k1**2) / (k2 * k1))**2 * np.sin(k2 * a)**2
+        T = 4 / denom
+    else:
+        T = 0
+    T_vals.append(T)
+
+# Tracé de T(e)
+plt.figure(figsize=(8, 5))
+plt.plot(e_vals, T_vals, label="T(e)")
+plt.xlabel("e = E / |V0|")
+plt.ylabel("T (coefficient de transmission)")
+plt.title("Transmission analytique pour un puits de potentiel")
+plt.grid(True)
+plt.legend()
+plt.show()
+
+#plan 
+L = 2.0
+nx = 1000
+dx = L / nx
+x = np.linspace(0, L, nx)
+ 
+#Potentiel : puits entre x = 0.8 et 0.9
+V0 = -400
+V = np.zeros(nx)
+V[(x >= 0.8) & (x <= 0.9)] = V0
+ 
+#hamiltonien
+coeff = 1 / (2 * dx**2)
+main_diag = np.ones(nx) * (2 * coeff) + V
+off_diag = np.ones(nx - 1) * (-coeff)
+H = np.diag(main_diag) + np.diag(off_diag, 1) + np.diag(off_diag, -1)
+ 
+#Diagonalisation du hamiltonien
+E, psi = np.linalg.eigh(H)
+ 
+#Etat propres
+psi0 = psi[:, 0]
+psi1 = psi[:, 1]
+psi0 /= np.sqrt(np.sum(psi0**2) * dx)
+psi1 /= np.sqrt(np.sum(psi1**2) * dx)
+ 
+#Tracé des courbes
+plt.plot(x, psi0**2, label=f"État fondamental, E ≈ {E[0]:.2f}", color="blue")
+plt.plot(x, psi1**2, label=f"1er état excité, E ≈ {E[1]:.2f}", color="green")
+plt.plot(x, V / np.abs(V0) * np.max(psi0**2), label="Potentiel (échelle)", color="orange")
+plt.xlabel("x")
+plt.ylabel("|ψ(x)|²")
+plt.title("Deux premiers états stationnaires dans un puits de potentiel")
+plt.legend()
+plt.grid(True)
+plt.show()
