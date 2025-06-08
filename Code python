@@ -1,139 +1,57 @@
 import numpy as np
-import math
 import matplotlib.pyplot as plt
-import matplotlib.animation as animation
-import cmath as cmt
-import time
 
+# Constantes physiques
+ħ = 1        # Constante de Planck réduite (unités naturelles)
+m = 1        # Masse réduite (unités naturelles)
 
+# Paramètres du puits
+a = 2.0      # Largeur du puits : de x = 0 à x = a
+V0 = -50.0   # Profondeur du puits (doit être négatif)
 
-#declaration de constante
+# Discrétisation de l'espace
+dx = 0.01
+x = np.arange(-a, 2*a, dx)  # Espace autour du puits
+nx = len(x)
 
-start_time = time.time()
-dt=1E-7
-dx=0.001
-nx=int(1/dx)*2
-nt=90000 # En fonction du potentiel il faut modifier ce parametre car sur certaines animations la particule atteins les bords
-nd=int(nt/1000)+1#nombre d image dans notre animation
-n_frame = nd
-s=dt/(dx**2)
-xc=0.6
-sigma=0.05
-A=1/(math.sqrt(sigma*math.sqrt(math.pi)))
-v0=-40
-e=5#Valeur du rapport E/V0
-E=e*v0
-k=math.sqrt(2*abs(E))
-h=6.626e-34
-hb=1.054e-34
-Ev=1.602e-19
-
-#fonction
-
-def init():
-    line.set_data([], [])
-    return line,
-
-def animate(j):
-    line.set_data(o, final_densite[j,:]) #Crée un graphique pour chaque densite sauvegarde
-    return line,
-
-
-def energy(n,m,l,v):
-    res= ((n**2)*(hb**2)*(cmt.pi**2))/(2*m*(l**2))-v*Ev
-    #plt.plot((0,2),(res/Ev,res/Ev),color="red")
-    return res/Ev
-
-def energy2(n, m, l):
-    Ev=1.602176634e-19
-    energy_joules = (n**2)*(h**2) / (8 * m * l**2)
-    energy_ev = energy_joules / Ev
-    return energy_ev
-
-
-def etat_station(n,m,l,v,t):
-    pos_x=[]    #tableau de coordonées des x
-    pos_y=[]    #tableau de coordonées des y
-    res=0 #resultat de la fonctione etatstationnaire
-    i=0 #index qui va de 0 a 2 et augmente de dx a chaque tour
-    nrj=energy(n,m,l*pow(10,-8),v) #energie
-    print(nrj,"\n")
-
-    while i<=2:
-        res=(( 1+cmt.sqrt(nrj/(nrj+v*Ev)) )/2*cmt.exp( 1j*n*i*cmt.pi/l )+( 1-cmt.sqrt(nrj/(nrj+v*Ev)) )/2*cmt.exp(-1j*n*i*cmt.pi/l))*cmt.exp(-1j*nrj*t*2*cmt.pi/h)
-        pos_x.append(i)
-        pos_y.append(res.real+nrj)
-        i+=dx
-    return [pos_x,pos_y]
-
-
-
-
-o=np.zeros(nx)
-V=np.zeros(nx)
-
-# Initialisation des tableaux
-o = np.linspace(0, (nx - 1) * dx, nx)
+# Potentiel : V = V0 entre 0 et a, 0 ailleurs
 V = np.zeros(nx)
+V[(x >= 0) & (x <= a)] = V0
 
-V[(o >= 0.8) & (o<=1)] = v0  # Potentiel    permet de changer largeur du ptoentiel
+# Matrice Hamiltonienne (méthode des différences finies)
+diag = np.full(nx, -2.0)
+off_diag = np.ones(nx - 1)
+H = -(ħ**2)/(2*m*dx**2) * (
+        np.diag(diag) +
+        np.diag(off_diag, 1) +
+        np.diag(off_diag, -1)
+    ) + np.diag(V)
 
-cpt = A * np.exp(1j * k * o - ((o - xc) ** 2) / (2 * (sigma ** 2)))
-densite=np.zeros((nt,nx))
-densite[0,:] = np.absolute(cpt[:]) ** 2
-final_densite=np.zeros((n_frame,nx))
-re=np.zeros(nx)
-re[:]=np.real(cpt[:])
+# Diagonalisation
+E, psi = np.linalg.eigh(H)
 
-b=np.zeros(nx)
+# États liés (E < 0)
+bound_indices = np.where(E < 0)[0]
+E_bound = E[bound_indices]
+psi_bound = psi[:, bound_indices]
 
-im=np.zeros(nx)
-im[:]=np.imag(cpt[:])
+# Normalisation
+for i in range(len(E_bound)):
+    norm = np.sqrt(np.sum(np.abs(psi_bound[:, i])**2) * dx)
+    psi_bound[:, i] /= norm
 
-it=0
-for i in range(1, nt):
-    if i % 2 != 0:
-        b[1:-1]=im[1:-1]
-        im[1:-1] = im[1:-1] + s * (re[2:] + re[:-2]) - 2 * re[1:-1] * (s + V[1:-1] * dt)
-        densite[i,1:-1] = re[1:-1]*re[1:-1] + im[1:-1]*b[1:-1]
-    else:
-        re[1:-1] = re[1:-1] - s * (im[2:] + im[:-2]) + 2 * im[1:-1] * (s + V[1:-1] * dt)
+# Affichage avec couleurs variées
+plt.figure(figsize=(10, 6))
+plt.plot(x, V, 'k--', label="Potentiel (V)")
 
-for i in range(1,nt):
-    if((i-1)%1000==0):
-        it+=1
-        final_densite[it][:]=densite[i][:]
+colors = plt.cm.viridis(np.linspace(0, 1, len(E_bound)))  # Palette de couleurs
 
+for i, color in enumerate(colors):
+    plt.plot(x, psi_bound[:, i] + E_bound[i], color=color, label=f"État {i} (E = {E_bound[i]:.2f})")
 
-
-plot_title = "Marche Ascendante avec E/Vo="+str(e)
-
-fig = plt.figure() # initialise la figure principale
-line, = plt.plot([], [])
-plt.ylim(0,13)
-plt.xlim(0,2)
-plt.axis((0,2,-1,13))
-plt.plot(o,V,label="Potentiel")
-
-
-AAaa=etat_station(1,9.1*pow(10,-31),1e-1,10,1)
-plt.plot(AAaa[0],AAaa[1],color="green")
-
-BB=etat_station(2,9.11e-31,1e-1,10,1)
-plt.plot(BB[0],BB[1],color="pink")
-
-CC=etat_station(3,9.11e-31,1e-1,10,1)
-plt.plot(CC[0],CC[1],color="blue")
-
-#print(1*cmt.exp( (c(math.sqrt( 2*9.1*pow(10,-31)*(energy(1,9.1*pow(10,-31),0.2,v0)-v0) )*2*math.pi)/h)*1j*i )*cmt.exp(-1j*energy(1,9.1*pow(10,-31),0.2,v0)*1*2*math.pi/h))
-plt.grid(True)
-#plt.plot((0,2),(1,1),color="red")
-plt.title(plot_title)
+plt.title("États liés dans un puits carré fini (de 0 à a)")
 plt.xlabel("x")
-plt.ylabel("Densité de probabilité de présence")
-plt.legend() #Permet de faire apparaitre la legende
-
-ani = animation.FuncAnimation(fig,animate,init_func=init, frames=nd, blit=False, interval=100, repeat=False)
-plt.show()
-
-
+plt.ylabel("Énergie / Fonction d'onde")
+plt.legend(loc="lower right")
+plt.grid(True)
+plt.show() 
